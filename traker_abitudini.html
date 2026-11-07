@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="it" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Habit Quest - Gamified Habit Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Tone.js for game SFX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81',
+                        },
+                        accent: {
+                            amber: '#f59e0b',
+                            emerald: '#10b981',
+                            rose: '#f43f5e',
+                            purple: '#a855f7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom animations & Glassmorphism */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .dark .glass-panel {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .habit-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .habit-card:active {
+            transform: scale(0.98);
+        }
+
+        /* Hide scrollbars for clean mobile feel */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        @keyframes levelUpPulse {
+            0% { transform: scale(0.9); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-level-up {
+            animation: levelUpPulse 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-full font-sans antialiased selection:bg-brand-500 selection:text-white flex flex-col justify-between">
+
+    <!-- Top Navigation Header -->
+    <header class="sticky top-0 z-30 glass-panel border-b border-slate-200 dark:border-slate-800 px-4 py-3 sm:px-6">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-accent-purple flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                    <i class="fa-solid font-bold fa-gamepad text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold leading-none bg-gradient-to-r from-brand-600 to-accent-purple bg-clip-text text-transparent">
+                        HabitQuest
+                    </h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Livello & Routine Tracker</p>
+                </div>
+            </div>
+
+            <!-- Profile Summary / XP Bar mini -->
+            <div class="flex items-center gap-3">
+                <button id="soundToggleBtn" onclick="toggleSound()" class="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition" title="Attiva/Disattiva Suono">
+                    <i class="fa-solid fa-volume-high text-brand-500" id="soundIcon"></i>
+                </button>
+                <button id="themeToggleBtn" class="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:block text-amber-400"></i>
+                </button>
+                <div class="flex items-center gap-2 bg-slate-200/60 dark:bg-slate-800/60 px-3 py-1.5 rounded-full border border-slate-300/40 dark:border-slate-700/40">
+                    <span class="w-2.5 h-2.5 rounded-full bg-accent-amber animate-pulse"></span>
+                    <span id="headerLevel" class="text-xs font-bold text-slate-700 dark:text-slate-200">Lvl 1</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container (Fixed pb-44 padding to prevent bottom navigation bar overlapping) -->
+    <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 pb-44 space-y-6">
+
+        <!-- Gamification Banner Card -->
+        <section class="glass-panel rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden bg-gradient-to-r from-brand-900/10 via-accent-purple/10 to-transparent border border-brand-500/20">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
+                <!-- User Level & XP -->
+                <div class="flex items-center gap-4 w-full sm:w-auto">
+                    <div class="relative">
+                        <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-400 via-brand-500 to-accent-purple flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-brand-500/30">
+                            <span id="userLevelDisplay">1</span>
+                        </div>
+                        <div class="absolute -bottom-1 -right-1 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow">
+                            Hero
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between mb-1">
+                            <h2 id="userNameDisplay" class="font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100">Campione delle Routine</h2>
+                            <span id="xpTextDisplay" class="text-xs font-semibold text-brand-600 dark:text-brand-400">0 / 100 XP</span>
+                        </div>
+                        
+                        <!-- Progress bar -->
+                        <div class="w-full bg-slate-200 dark:bg-slate-800 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-300/50 dark:border-slate-700/50">
+                            <div id="xpProgressBar" class="h-full bg-gradient-to-r from-brand-500 via-accent-purple to-amber-400 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span><i class="fa-solid fa-fire text-amber-500 mr-1"></i> Streak Totale: <strong id="totalStreakCount" class="text-slate-700 dark:text-slate-200">0 gg</strong></span>
+                            <span><i class="fa-solid fa-coins text-amber-400 mr-1"></i> Monete: <strong id="userCoinsCount" class="text-amber-500">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Views -->
+        <!-- VIEW 1: TODAY'S HABITS -->
+        <section id="view-today" class="tab-content space-y-5 pb-24">
+            <!-- Daily Summary & Add Button Header -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold">Oggi</h2>
+                    <p id="todayDateText" class="text-xs text-slate-500 dark:text-slate-400">Caricamento data...</p>
+                </div>
+                <button onclick="openAddHabitModal()" class="flex items-center gap-2 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-600 text-white font-medium px-4 py-2.5 rounded-2xl shadow-md shadow-brand-500/25 active:scale-95 transition">
+                    <i class="fa-solid fa-plus text-sm"></i>
+                    <span class="text-sm font-semibold">Nuova Abitudine</span>
+                </button>
+            </div>
+
+            <!-- Category Filter Pills -->
+            <div id="categoryFilterContainer" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar text-xs font-medium">
+                <button onclick="filterCategory('ALL')" class="cat-filter-btn active bg-brand-600 text-white px-3.5 py-1.5 rounded-xl shadow-sm whitespace-nowrap">Tutte</button>
+                <button onclick="filterCategory('Salute')" class="cat-filter-btn bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3.5 py-1.5 rounded-xl whitespace-nowrap">🍎 Salute</button>
+                <button onclick="filterCategory('Fitness')" class="cat-filter-btn bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3.5 py-1.5 rounded-xl whitespace-nowrap">💪 Fitness</button>
+                <button onclick="filterCategory('Produttività')" class="cat-filter-btn bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3.5 py-1.5 rounded-xl whitespace-nowrap">⚡ Produttività</button>
+                <button onclick="filterCategory('Mindful')" class="cat-filter-btn bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3.5 py-1.5 rounded-xl whitespace-nowrap">🧘 Mindful</button>
+            </div>
+
+            <!-- Daily Progress Card -->
+            <div class="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs font-semibold mb-1">
+                        <span>Progresso Giornaliero</span>
+                        <span id="dailyProgressPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div id="dailyProgressBar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span id="dailyCompletedStats" class="text-sm font-bold text-emerald-500">0/0</span>
+                    <span class="block text-[10px] text-slate-400">completate</span>
+                </div>
+            </div>
+
+            <!-- Habit List Container (Padding added to ensure bottom visibility) -->
+            <div id="habitsContainer" class="space-y-3">
+                <!-- Habit item templates dynamically inserted here -->
+            </div>
+
+            <!-- Daily Reflection / Mood Journal Widget -->
+            <div class="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <i class="fa-solid fa-face-smile text-amber-500"></i> Diario di Oggi & Mood
+                    </h3>
+                    <span id="journalSaveStatus" class="text-[10px] text-emerald-500 font-semibold opacity-0 transition-opacity">Salvato!</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="setMood('😄')" class="mood-btn text-xl p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:scale-110 transition">😄</button>
+                    <button onclick="setMood('🙂')" class="mood-btn text-xl p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:scale-110 transition">🙂</button>
+                    <button onclick="setMood('😐')" class="mood-btn text-xl p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:scale-110 transition">😐</button>
+                    <button onclick="setMood('😴')" class="mood-btn text-xl p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:scale-110 transition">😴</button>
+                    <button onclick="setMood('🔥')" class="mood-btn text-xl p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:scale-110 transition">🔥</button>
+                </div>
+                <textarea id="dailyJournalInput" onchange="saveDailyReflection()" placeholder="Come è andata la giornata? Scrivi un piccolo appunto..." class="w-full h-16 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"></textarea>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden glass-panel rounded-3xl p-8 text-center border border-dashed border-slate-300 dark:border-slate-700">
+                <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-brand-500/10 flex items-center justify-center text-brand-500 text-2xl">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </div>
+                <h3 class="font-bold text-base mb-1">Nessuna abitudine per oggi</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto mb-4">Inizia a costruire la tua routine ideale! Aggiungi la tua prima abitudine.</p>
+                <button onclick="openAddHabitModal()" class="inline-flex items-center gap-2 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow">
+                    <i class="fa-solid fa-plus"></i> Crea Prima Abitudine
+                </button>
+            </div>
+        </section>
+
+        <!-- VIEW 2: STATS & ANALYTICS -->
+        <section id="view-analytics" class="tab-content hidden space-y-6 pb-24">
+            <div>
+                <h2 class="text-xl font-bold">Statistiche & Analisi</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Monitora la tua costanza nel tempo</p>
+            </div>
+
+            <!-- Weekly Completion Chart -->
+            <div class="glass-panel p-5 rounded-3xl border border-slate-200 dark:border-slate-800">
+                <h3 class="text-sm font-bold mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-brand-500"></i> Attività ultimi 7 giorni
+                </h3>
+                <div class="h-48 w-full">
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Detailed Streak Stats Card -->
+            <div class="grid grid-cols-2 gap-4 pb-6">
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+                    <span class="block text-2xl font-black text-amber-500" id="totalCompletedCount">0</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">Abitudini Portate a Termine</span>
+                </div>
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+                    <span class="block text-2xl font-black text-brand-500" id="bestStreakCount">0</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">Miglior Streak Registrata</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: BADGES & SHOP REWARDS -->
+        <section id="view-badges" class="tab-content hidden space-y-6 pb-24">
+            <!-- Badges Section -->
+            <div>
+                <h2 class="text-xl font-bold">Traguardi & Distintivi</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Sblocca trofei completando le tue sfide quotidiane</p>
+            </div>
+            <div id="badgesGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+                <!-- Dynamic Badges Inserted Here -->
+            </div>
+
+            <!-- Real-Life Custom Rewards Shop -->
+            <div class="pt-4 space-y-3">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-store text-amber-500"></i> Mercato Ricompense
+                        </h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Spendi le tue monete guadagnate in premi reali</p>
+                    </div>
+                    <button onclick="openAddRewardModal()" class="text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/30 px-3 py-1.5 rounded-xl hover:bg-amber-500 hover:text-white transition">
+                        + Crea Premio
+                    </button>
+                </div>
+                <div id="rewardsShopGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Dynamic Reward Shop Items -->
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: SETTINGS / MANAGEMENT -->
+        <section id="view-settings" class="tab-content hidden space-y-5 pb-24">
+            <div>
+                <h2 class="text-xl font-bold">Impostazioni & Profilo</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Gestisci le tue abitudini ed i tuoi dati</p>
+            </div>
+
+            <!-- Profile Name Card -->
+            <div class="glass-panel p-5 rounded-3xl space-y-3 border border-slate-200 dark:border-slate-800">
+                <label class="block text-xs font-semibold text-slate-500">Nome Eroe</label>
+                <div class="flex gap-2">
+                    <input type="text" id="profileNameInput" class="flex-1 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500" placeholder="Il tuo nome">
+                    <button onclick="saveProfileName()" class="bg-brand-600 text-white font-medium px-4 py-2 rounded-xl text-xs hover:bg-brand-500 transition">
+                        Salva
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manage Habits List -->
+            <div class="glass-panel p-5 rounded-3xl space-y-4 border border-slate-200 dark:border-slate-800">
+                <h3 class="text-sm font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-brand-500"></i> Gestisci Abitudini Sbloccate
+                </h3>
+                <div id="manageHabitsList" class="space-y-2">
+                    <!-- Manage item dynamic list -->
+                </div>
+            </div>
+
+            <!-- Data Reset Box -->
+            <div class="glass-panel p-5 rounded-3xl space-y-3 border border-rose-500/20 bg-rose-500/5">
+                <h3 class="text-sm font-bold text-rose-500 flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Zona di Pericolo
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Vuoi ripartire da zero? Tutti i progressi, XP e distintivi saranno azzerati.</p>
+                <button onclick="resetAllData()" class="bg-rose-500/10 border border-rose-500/30 text-rose-500 font-semibold px-4 py-2 rounded-xl text-xs hover:bg-rose-500 hover:text-white transition">
+                    Azzera Tutti i Dati
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar (Mobile Native Style) -->
+    <nav class="fixed bottom-0 left-0 right-0 z-30 glass-panel border-t border-slate-200 dark:border-slate-800 px-3 py-2.5 shadow-2xl">
+        <div class="max-w-md mx-auto flex justify-around items-center">
+            <button onclick="switchTab('today')" id="tab-btn-today" class="nav-tab active flex flex-col items-center gap-1 text-brand-600 dark:text-brand-400 p-1.5 rounded-xl transition">
+                <i class="fa-solid fa-calendar-check text-lg"></i>
+                <span class="text-[10px] font-medium">Oggi</span>
+            </button>
+            <button onclick="switchTab('analytics')" id="tab-btn-analytics" class="nav-tab flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl transition">
+                <i class="fa-solid fa-chart-pie text-lg"></i>
+                <span class="text-[10px] font-medium">Analisi</span>
+            </button>
+            <button onclick="switchTab('badges')" id="tab-btn-badges" class="nav-tab flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl transition">
+                <i class="fa-solid fa-gift text-lg"></i>
+                <span class="text-[10px] font-medium">Premi & Shop</span>
+            </button>
+            <button onclick="switchTab('settings')" id="tab-btn-settings" class="nav-tab flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl transition">
+                <i class="fa-solid fa-sliders text-lg"></i>
+                <span class="text-[10px] font-medium">Opzioni</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- MODAL: ADD / EDIT HABIT -->
+    <div id="habitModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-6 space-y-4 transform transition-transform duration-300 scale-95">
+            <div class="flex justify-between items-center">
+                <h3 id="modalTitle" class="text-lg font-bold">Nuova Abitudine</h3>
+                <button onclick="closeHabitModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <form id="habitForm" onsubmit="handleSaveHabit(event)" class="space-y-4">
+                <input type="hidden" id="habitIdInput">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Nome Abitudine</label>
+                    <input type="text" id="habitNameInput" required placeholder="es. Bere 2L d'acqua, Meditazione..." class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Categoria</label>
+                        <select id="habitCategoryInput" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="Salute">🍎 Salute</option>
+                            <option value="Fitness">💪 Fitness</option>
+                            <option value="Produttività">⚡ Produttività</option>
+                            <option value="Mindful">🧘 Mindful</option>
+                            <option value="Altro">✨ Altro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Frequenza</label>
+                        <select id="habitFreqInput" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="DAILY">Tutti i giorni</option>
+                            <option value="WEEKDAYS">Lun - Ven</option>
+                            <option value="WEEKENDS">Nel Weekend</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Icona</label>
+                    <div class="grid grid-cols-5 gap-2" id="iconPickerContainer">
+                        <!-- Icon Options dynamically inserted -->
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Ricompensa XP / Monete</label>
+                    <select id="habitXpInput" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <option value="10">Facile (+10 XP / +5 🪙)</option>
+                        <option value="20" selected>Media (+20 XP / +10 🪙)</option>
+                        <option value="35">Impegnativa (+35 XP / +20 🪙)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="closeHabitModal()" class="px-5 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                        Annulla
+                    </button>
+                    <button type="submit" class="bg-gradient-to-r from-brand-600 to-brand-500 text-white font-semibold px-6 py-2.5 rounded-2xl text-xs shadow-md shadow-brand-500/25 hover:opacity-90 transition">
+                        Salva Abitudine
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD CUSTOM REWARD -->
+    <div id="rewardAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-6 space-y-4">
+            <h3 class="text-lg font-bold">Crea Premio Personalizzato</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Titolo Premio</label>
+                    <input type="text" id="rewardTitleInput" placeholder="es. 1 Ora di Videogame, Pausa Caffè..." class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Costo in Monete (🪙)</label>
+                    <input type="number" id="rewardCostInput" value="50" min="10" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" onclick="closeAddRewardModal()" class="px-4 py-2 text-xs text-slate-500">Annulla</button>
+                <button type="button" onclick="saveCustomReward()" class="bg-amber-500 text-slate-950 font-bold px-5 py-2 rounded-xl text-xs">Crea Premio</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEVEL UP / REWARD OVERLAY MODAL -->
+    <div id="rewardModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-amber-500/30 w-full max-w-sm rounded-3xl shadow-2xl p-6 text-center space-y-4 animate-level-up">
+            <div class="w-20 h-20 mx-auto rounded-full bg-gradient-to-tr from-amber-400 to-brand-500 flex items-center justify-center text-white text-4xl shadow-xl shadow-amber-500/30">
+                <i class="fa-solid fa-crown animate-bounce"></i>
+            </div>
+            
+            <h3 id="rewardTitle" class="text-2xl font-black bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 bg-clip-text text-transparent">
+                LEVEL UP!
+            </h3>
+            
+            <p id="rewardSubtitle" class="text-sm text-slate-300">
+                Congratulazioni! Sei salito al Livello <span id="newLevelSpan" class="font-bold text-amber-400">2</span>!
+            </p>
+
+            <button onclick="closeRewardModal()" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold py-3 rounded-2xl text-sm shadow-lg shadow-amber-500/20 hover:brightness-110 transition">
+                Continua la Quest!
+            </button>
+        </div>
+    </div>
+
+    <!-- APPLICATION JAVASCRIPT LOGIC -->
+    <script>
+        /* --- APP STATE & STORAGE --- */
+        const STORAGE_KEY = 'HABIT_QUEST_DATA_V1';
+        
+        const AVAILABLE_ICONS = [
+            'fa-droplet', 'fa-dumbbell', 'fa-book-open', 'fa-brain', 
+            'fa-apple-whole', 'fa-bed', 'fa-person-walking', 'fa-code', 
+            'fa-spa', 'fa-piggy-bank'
+        ];
+
+        const BADGES_DEFINITIONS = [
+            { id: 'first_habit', title: 'Primo Passo', desc: 'Completa la tua prima abitudine', icon: 'fa-seedling', reqCount: 1 },
+            { id: 'streak_3', title: 'In Fiamme', desc: 'Raggiungi una streak di 3 giorni', icon: 'fa-fire', reqStreak: 3 },
+            { id: 'streak_7', title: 'Costanza Ferrea', desc: 'Raggiungi una streak di 7 giorni', icon: 'fa-shield-halved', reqStreak: 7 },
+            { id: 'total_10', title: 'Guerriero', desc: 'Completa 10 abitudini in totale', icon: 'fa-sword', reqCount: 10 },
+            { id: 'total_50', title: 'Leggenda', desc: 'Completa 50 abitudini in totale', icon: 'fa-trophy', reqCount: 50 },
+            { id: 'level_5', title: 'Master delle Routine', desc: 'Raggiungi il livello 5', icon: 'fa-crown', reqLevel: 5 }
+        ];
+
+        let state = {
+            user: {
+                name: 'Eroe delle Routine',
+                xp: 0,
+                coins: 20,
+                level: 1,
+                totalCompleted: 0,
+                unlockedBadges: [],
+                soundEnabled: true
+            },
+            currentCategoryFilter: 'ALL',
+            reflections: {}, // { 'YYYY-MM-DD': { mood: '😄', note: 'Text...' } }
+            shopRewards: [
+                { id: 'r1', title: '1 Ora di Gaming / Relax', cost: 50, icon: 'fa-gamepad' },
+                { id: 'r2', title: 'Pausa Caffè & Dolce', cost: 30, icon: 'fa-mug-hot' },
+                { id: 'r3', title: 'Guarda un Film / Episodio', cost: 70, icon: 'fa-film' }
+            ],
+            habits: [],
+            selectedIcon: 'fa-droplet',
+            history: {} 
+        };
+
+        let weeklyChartInstance = null;
+
+        /* --- INITIALIZATION --- */
+        window.onload = function() {
+            loadData();
+            initTheme();
+            renderDateHeader();
+            renderIconPicker();
+            loadDailyReflection();
+            renderApp();
+        };
+
+        function getTodayString() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        function renderDateHeader() {
+            const options = { weekday: 'long', day: 'numeric', month: 'long' };
+            const todayStr = new Date().toLocaleDateString('it-IT', options);
+            document.getElementById('todayDateText').innerText = todayStr.charAt(0).toUpperCase() + todayStr.slice(1);
+        }
+
+        function renderIconPicker() {
+            const container = document.getElementById('iconPickerContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            AVAILABLE_ICONS.forEach(icon => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                const isSelected = state.selectedIcon === icon;
+                btn.className = `p-2.5 rounded-xl border flex items-center justify-center transition-all ${
+                    isSelected 
+                    ? 'border-brand-500 bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold scale-105' 
+                    : 'border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`;
+                btn.innerHTML = `<i class="fa-solid ${icon} text-lg"></i>`;
+                btn.onclick = () => {
+                    state.selectedIcon = icon;
+                    renderIconPicker();
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        /* --- HABIT MODAL CONTROL --- */
+        function openAddHabitModal(editId = null) {
+            const modal = document.getElementById('habitModal');
+            const form = document.getElementById('habitForm');
+            form.reset();
+            
+            if (editId) {
+                const h = state.habits.find(item => item.id === editId);
+                if (h) {
+                    document.getElementById('modalTitle').innerText = 'Modifica Abitudine';
+                    document.getElementById('habitIdInput').value = h.id;
+                    document.getElementById('habitNameInput').value = h.name;
+                    document.getElementById('habitCategoryInput').value = h.category || 'Salute';
+                    document.getElementById('habitFreqInput').value = h.freq || 'DAILY';
+                    document.getElementById('habitXpInput').value = h.xp || 20;
+                    state.selectedIcon = h.icon || 'fa-droplet';
+                }
+            } else {
+                document.getElementById('modalTitle').innerText = 'Nuova Abitudine';
+                document.getElementById('habitIdInput').value = '';
+                state.selectedIcon = 'fa-droplet';
+            }
+            
+            renderIconPicker();
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        }
+
+        function closeHabitModal() {
+            const modal = document.getElementById('habitModal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        /* --- PERSISTENCE --- */
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
+
+        function loadData() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                try {
+                    const loaded = JSON.parse(raw);
+                    state = { ...state, ...loaded };
+                    if (!state.user.coins) state.user.coins = 0;
+                    if (state.user.soundEnabled === undefined) state.user.soundEnabled = true;
+                    if (!state.shopRewards) state.shopRewards = [
+                        { id: 'r1', title: '1 Ora di Gaming / Relax', cost: 50, icon: 'fa-gamepad' },
+                        { id: 'r2', title: 'Pausa Caffè & Dolce', cost: 30, icon: 'fa-mug-hot' }
+                    ];
+                } catch (e) {
+                    console.error("Errore nel caricamento dati", e);
+                }
+            } else {
+                // Default starter habits
+                state.habits = [
+                    { id: 'h1', name: 'Bere 2L di Acqua', icon: 'fa-droplet', category: 'Salute', freq: 'DAILY', xp: 10, streak: 0, lastCompleted: null },
+                    { id: 'h2', name: 'Esercizio Fisico (20 min)', icon: 'fa-dumbbell', category: 'Fitness', freq: 'DAILY', xp: 20, streak: 0, lastCompleted: null },
+                    { id: 'h3', name: 'Lettura o Studio', icon: 'fa-book-open', category: 'Produttività', freq: 'DAILY', xp: 20, streak: 0, lastCompleted: null }
+                ];
+                saveData();
+            }
+            updateSoundIcon();
+        }
+
+        /* --- SOUND TOGGLE --- */
+        function toggleSound() {
+            state.user.soundEnabled = !state.user.soundEnabled;
+            saveData();
+            updateSoundIcon();
+        }
+
+        function updateSoundIcon() {
+            const icon = document.getElementById('soundIcon');
+            if (state.user.soundEnabled) {
+                icon.className = 'fa-solid fa-volume-high text-brand-500';
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-slate-400';
+            }
+        }
+
+        /* --- RENDER ENGINE --- */
+        function renderApp() {
+            renderUserStats();
+            renderHabitList();
+            renderStreakStats();
+            renderBadges();
+            renderRewardsShop();
+            renderManageList();
+            renderWeeklyChart();
+        }
+
+        function renderStreakStats() {
+            const bestStreak = state.habits.reduce((max, h) => Math.max(max, h.streak || 0), 0);
+            const bestStreakEl = document.getElementById('bestStreakCount');
+            if (bestStreakEl) bestStreakEl.innerText = `${bestStreak} gg`;
+        }
+
+        function renderBadges() {
+            const container = document.getElementById('badgesGrid');
+            if (!container) return;
+            container.innerHTML = '';
+
+            BADGES_DEFINITIONS.forEach(b => {
+                const isUnlocked = state.user.unlockedBadges.includes(b.id);
+                const card = document.createElement('div');
+                card.className = `glass-panel p-4 rounded-2xl border text-center transition ${
+                    isUnlocked 
+                    ? 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10' 
+                    : 'border-slate-200 dark:border-slate-800 opacity-50 grayscale'
+                }`;
+                card.innerHTML = `
+                    <div class="w-12 h-12 mx-auto mb-2 rounded-2xl flex items-center justify-center text-xl ${
+                        isUnlocked 
+                        ? 'bg-gradient-to-tr from-amber-400 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20' 
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                    }">
+                        <i class="fa-solid ${b.icon}"></i>
+                    </div>
+                    <h4 class="font-bold text-xs text-slate-800 dark:text-slate-100">${escapeHtml(b.title)}</h4>
+                    <p class="text-[10px] text-slate-400 mt-1">${escapeHtml(b.desc)}</p>
+                    <span class="inline-block mt-2 text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-md ${
+                        isUnlocked ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                    }">
+                        ${isUnlocked ? 'Sbloccato' : 'Bloccato'}
+                    </span>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function checkGamificationUnlocks() {
+            const maxStreak = state.habits.reduce((max, h) => Math.max(max, h.streak || 0), 0);
+            
+            BADGES_DEFINITIONS.forEach(b => {
+                if (state.user.unlockedBadges.includes(b.id)) return;
+
+                let unlock = false;
+                if (b.reqCount && state.user.totalCompleted >= b.reqCount) unlock = true;
+                if (b.reqStreak && maxStreak >= b.reqStreak) unlock = true;
+                if (b.reqLevel && state.user.level >= b.reqLevel) unlock = true;
+
+                if (unlock) {
+                    state.user.unlockedBadges.push(b.id);
+                    showRewardModal('NUOVO TRAGUARDO!', `Hai sbloccato il distintivo "${b.title}"!`);
+                }
+            });
+        }
+
+        function renderWeeklyChart() {
+            const canvas = document.getElementById('weeklyChart');
+            if (!canvas) return;
+
+            const days = [];
+            const dataCounts = [];
+            const today = new Date();
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(today);
+                d.setDate(today.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                const dayName = d.toLocaleDateString('it-IT', { weekday: 'short' });
+                days.push(dayName.charAt(0).toUpperCase() + dayName.slice(1));
+
+                const count = state.history[dateStr] ? state.history[dateStr].length : 0;
+                dataCounts.push(count);
+            }
+
+            if (weeklyChartInstance) {
+                weeklyChartInstance.destroy();
+            }
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+            const textColor = isDark ? '#94a3b8' : '#64748b';
+
+            weeklyChartInstance = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: days,
+                    datasets: [{
+                        label: 'Abitudini Completate',
+                        data: dataCounts,
+                        backgroundColor: '#6366f1',
+                        borderRadius: 8,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: gridColor },
+                            ticks: { color: textColor, font: { size: 10 } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1, color: textColor, font: { size: 10 } },
+                            grid: { color: gridColor }
+                        }
+                    }
+                }
+            });
+        }
+
+        function filterCategory(cat) {
+            state.currentCategoryFilter = cat;
+            document.querySelectorAll('.cat-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-brand-600', 'text-white', 'shadow-sm');
+                btn.classList.add('bg-slate-200', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-300');
+            });
+            event.target.classList.remove('bg-slate-200', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-300');
+            event.target.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
+            renderHabitList();
+        }
+
+        function renderUserStats() {
+            const currentLevelXp = state.user.xp % 100;
+            const progressPercent = Math.min(100, Math.floor((currentLevelXp / 100) * 100));
+
+            document.getElementById('userLevelDisplay').innerText = state.user.level;
+            document.getElementById('headerLevel').innerText = `Lvl ${state.user.level}`;
+            document.getElementById('userNameDisplay').innerText = state.user.name;
+            document.getElementById('profileNameInput').value = state.user.name;
+            document.getElementById('xpTextDisplay').innerText = `${currentLevelXp} / 100 XP`;
+            document.getElementById('xpProgressBar').style.width = `${progressPercent}%`;
+            document.getElementById('totalCompletedCount').innerText = state.user.totalCompleted;
+            document.getElementById('userCoinsCount').innerText = state.user.coins || 0;
+
+            const maxStreak = state.habits.reduce((max, h) => Math.max(max, h.streak || 0), 0);
+            document.getElementById('totalStreakCount').innerText = `${maxStreak} gg`;
+        }
+
+        function renderHabitList() {
+            const container = document.getElementById('habitsContainer');
+            const emptyState = document.getElementById('emptyState');
+            container.innerHTML = '';
+
+            let filtered = state.habits;
+            if (state.currentCategoryFilter !== 'ALL') {
+                filtered = state.habits.filter(h => (h.category || 'Salute') === state.currentCategoryFilter);
+            }
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                document.getElementById('dailyProgressPercent').innerText = '0%';
+                document.getElementById('dailyProgressBar').style.width = '0%';
+                document.getElementById('dailyCompletedStats').innerText = '0/0';
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            const today = getTodayString();
+            let completedTodayCount = 0;
+
+            filtered.forEach(habit => {
+                const isCompleted = habit.lastCompleted === today;
+                if (isCompleted) completedTodayCount++;
+
+                const card = document.createElement('div');
+                card.className = `habit-card glass-panel rounded-2xl p-4 flex items-center justify-between border ${
+                    isCompleted 
+                    ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-500/10' 
+                    : 'border-slate-200 dark:border-slate-800'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${
+                            isCompleted 
+                            ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' 
+                            : 'bg-slate-200/80 dark:bg-slate-800 text-brand-600 dark:text-brand-400'
+                        }">
+                            <i class="fa-solid ${habit.icon}"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-800 dark:text-slate-100 ${isCompleted ? 'line-through opacity-70' : ''}">
+                                ${escapeHtml(habit.name)}
+                            </h3>
+                            <div class="flex items-center gap-2.5 mt-1">
+                                <span class="text-[10px] text-slate-400 bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium">
+                                    ${habit.category || 'Generale'}
+                                </span>
+                                <span class="text-[11px] text-amber-500 font-semibold flex items-center gap-1">
+                                    <i class="fa-solid fa-fire"></i> ${habit.streak || 0} gg
+                                </span>
+                                <span class="text-[11px] text-brand-500 font-medium">
+                                    +${habit.xp} XP
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="toggleHabit('${habit.id}')" class="w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                        isCompleted
+                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                        : 'border-2 border-slate-300 dark:border-slate-700 hover:border-brand-500 text-transparent'
+                    }">
+                        <i class="fa-solid fa-check text-base"></i>
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+
+            const total = filtered.length;
+            const percent = total > 0 ? Math.round((completedTodayCount / total) * 100) : 0;
+            document.getElementById('dailyProgressPercent').innerText = `${percent}%`;
+            document.getElementById('dailyProgressBar').style.width = `${percent}%`;
+            document.getElementById('dailyCompletedStats').innerText = `${completedTodayCount}/${total}`;
+        }
+
+        /* --- HABIT ACTION TOGGLE --- */
+        function toggleHabit(id) {
+            const habit = state.habits.find(h => h.id === id);
+            if (!habit) return;
+
+            const today = getTodayString();
+            const wasCompleted = habit.lastCompleted === today;
+
+            if (!state.history[today]) {
+                state.history[today] = [];
+            }
+
+            const coinEarned = Math.round(habit.xp / 2);
+
+            if (wasCompleted) {
+                habit.lastCompleted = null;
+                habit.streak = Math.max(0, habit.streak - 1);
+                state.user.xp = Math.max(0, state.user.xp - habit.xp);
+                state.user.coins = Math.max(0, state.user.coins - coinEarned);
+                state.user.totalCompleted = Math.max(0, state.user.totalCompleted - 1);
+                state.history[today] = state.history[today].filter(hId => hId !== id);
+            } else {
+                habit.lastCompleted = today;
+                habit.streak = (habit.streak || 0) + 1;
+                state.user.xp += habit.xp;
+                state.user.coins += coinEarned;
+                state.user.totalCompleted += 1;
+                
+                if (!state.history[today].includes(id)) {
+                    state.history[today].push(id);
+                }
+
+                triggerRewardEffects();
+                checkGamificationUnlocks();
+            }
+
+            const newLevel = Math.floor(state.user.xp / 100) + 1;
+            if (newLevel > state.user.level) {
+                state.user.level = newLevel;
+                showRewardModal('LEVEL UP!', `Fantastico! Sei salito al Livello ${newLevel}!`);
+            }
+
+            saveData();
+            renderApp();
+        }
+
+        /* --- SOUND EFFECTS --- */
+        function triggerRewardEffects() {
+            try {
+                confetti({
+                    particleCount: 60,
+                    spread: 70,
+                    origin: { y: 0.8 }
+                });
+            } catch (e) {}
+
+            if (state.user.soundEnabled && window.Tone) {
+                try {
+                    const synth = new Tone.Synth().toDestination();
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C5", "8n", now);
+                    synth.triggerAttackRelease("E5", "8n", now + 0.1);
+                    synth.triggerAttackRelease("G5", "8n", now + 0.2);
+                } catch (e) {}
+            }
+        }
+
+        /* --- SHOP & CUSTOM REWARDS --- */
+        function renderRewardsShop() {
+            const container = document.getElementById('rewardsShopGrid');
+            if (!container) return;
+            container.innerHTML = '';
+
+            state.shopRewards.forEach(r => {
+                const canAfford = state.user.coins >= r.cost;
+                const card = document.createElement('div');
+                card.className = `glass-panel p-3.5 rounded-2xl border flex items-center justify-between ${canAfford ? 'border-amber-500/30' : 'border-slate-200 dark:border-slate-800 opacity-60'}`;
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-lg">
+                            <i class="fa-solid ${r.icon || 'fa-gift'}"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-xs">${escapeHtml(r.title)}</h4>
+                            <span class="text-[11px] text-amber-500 font-bold">🪙 ${r.cost} Monete</span>
+                        </div>
+                    </div>
+                    <button onclick="buyReward('${r.id}')" ${!canAfford ? 'disabled' : ''} class="px-3 py-1.5 rounded-xl text-xs font-bold ${canAfford ? 'bg-amber-500 text-slate-950 hover:brightness-110' : 'bg-slate-300 dark:bg-slate-800 text-slate-500'} transition">
+                        Riscatta
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function buyReward(rewardId) {
+            const reward = state.shopRewards.find(r => r.id === rewardId);
+            if (reward && state.user.coins >= reward.cost) {
+                state.user.coins -= reward.cost;
+                saveData();
+                renderApp();
+                showRewardModal('PREMIO RISCATTATO!', `Goditi il tuo premio: "${reward.title}"! VE LO SIETE MERITATO! 🎉`);
+            }
+        }
+
+        function openAddRewardModal() {
+            const modal = document.getElementById('rewardAddModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        }
+
+        function closeAddRewardModal() {
+            const modal = document.getElementById('rewardAddModal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        function saveCustomReward() {
+            const title = document.getElementById('rewardTitleInput').value.trim();
+            const cost = parseInt(document.getElementById('rewardCostInput').value, 10);
+            if (title && cost) {
+                state.shopRewards.push({
+                    id: 'r_' + Date.now(),
+                    title: title,
+                    cost: cost,
+                    icon: 'fa-star'
+                });
+                saveData();
+                renderRewardsShop();
+                closeAddRewardModal();
+            }
+        }
+
+        /* --- DAILY REFLECTION / JOURNAL --- */
+        function setMood(emoji) {
+            const today = getTodayString();
+            if (!state.reflections[today]) state.reflections[today] = {};
+            state.reflections[today].mood = emoji;
+            saveDailyReflection();
+        }
+
+        function saveDailyReflection() {
+            const today = getTodayString();
+            const note = document.getElementById('dailyJournalInput').value;
+            if (!state.reflections[today]) state.reflections[today] = {};
+            state.reflections[today].note = note;
+
+            saveData();
+            
+            const status = document.getElementById('journalSaveStatus');
+            status.classList.remove('opacity-0');
+            setTimeout(() => status.classList.add('opacity-0'), 1500);
+        }
+
+        function loadDailyReflection() {
+            const today = getTodayString();
+            if (state.reflections[today] && state.reflections[today].note) {
+                document.getElementById('dailyJournalInput').value = state.reflections[today].note;
+            }
+        }
+
+        /* --- MODAL FORM SAVE --- */
+        function handleSaveHabit(e) {
+            e.preventDefault();
+            const id = document.getElementById('habitIdInput').value;
+            const name = document.getElementById('habitNameInput').value.trim();
+            const category = document.getElementById('habitCategoryInput').value;
+            const freq = document.getElementById('habitFreqInput').value;
+            const xp = parseInt(document.getElementById('habitXpInput').value, 10);
+
+            if (!name) return;
+
+            if (id) {
+                const habit = state.habits.find(h => h.id === id);
+                if (habit) {
+                    habit.name = name;
+                    habit.icon = state.selectedIcon;
+                    habit.category = category;
+                    habit.freq = freq;
+                    habit.xp = xp;
+                }
+            } else {
+                const newHabit = {
+                    id: 'h_' + Date.now(),
+                    name: name,
+                    icon: state.selectedIcon,
+                    category: category,
+                    freq: freq,
+                    xp: xp,
+                    streak: 0,
+                    lastCompleted: null
+                };
+                state.habits.push(newHabit);
+            }
+
+            saveData();
+            renderApp();
+            closeHabitModal();
+        }
+
+        function renderManageList() {
+            const container = document.getElementById('manageHabitsList');
+            container.innerHTML = '';
+
+            if (state.habits.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400">Nessuna abitudine inserita.</p>`;
+                return;
+            }
+
+            state.habits.forEach(h => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800';
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid ${h.icon} text-brand-500 text-lg"></i>
+                        <span class="font-medium text-xs">${escapeHtml(h.name)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="deleteHabit('${h.id}')" class="text-rose-500 hover:bg-rose-500/10 p-2 rounded-xl text-xs transition">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function deleteHabit(id) {
+            state.habits = state.habits.filter(h => h.id !== id);
+            saveData();
+            renderApp();
+        }
+
+        function saveProfileName() {
+            const newName = document.getElementById('profileNameInput').value.trim();
+            if (newName) {
+                state.user.name = newName;
+                saveData();
+                renderUserStats();
+            }
+        }
+
+        function resetAllData() {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+
+        /* --- REWARD OVERLAY MODAL --- */
+        function showRewardModal(title, subtitle) {
+            document.getElementById('rewardTitle').innerText = title;
+            document.getElementById('rewardSubtitle').innerText = subtitle;
+            
+            const modal = document.getElementById('rewardModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        }
+
+        function closeRewardModal() {
+            const modal = document.getElementById('rewardModal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        /* --- TAB NAVIGATION --- */
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('text-brand-600', 'dark:text-brand-400');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+            activeBtn.classList.remove('text-slate-400');
+            activeBtn.classList.add('text-brand-600', 'dark:text-brand-400');
+
+            if (tabId === 'analytics') {
+                renderWeeklyChart();
+            }
+        }
+
+        /* --- THEME TOGGLE --- */
+        function initTheme() {
+            const themeBtn = document.getElementById('themeToggleBtn');
+            themeBtn.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                if (weeklyChartInstance) renderWeeklyChart();
+            });
+        }
+
+        /* --- UTILS --- */
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
